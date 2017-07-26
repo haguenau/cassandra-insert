@@ -1,0 +1,82 @@
+#! /usr/bin/perl -w
+use strict;
+require 5.10.0;
+use Cassandra::Client;
+use Getopt::Long;
+use JSON;
+use FindBin qw($RealBin);
+#use lib $RealBin . '/../lib';
+#use BinaryEncode qw(:all);
+
+## Parse config file
+my $fconf = $RealBin . '/../conf/cassandra-insert.json';
+open(FCONF, $fconf)
+  or die "Couldn't open \`$fconf' for reading: $!";
+my $conf;
+{
+    local $/ = undef;
+    $conf = from_json <FCONF>;
+}
+close FCONF;
+
+my @seed_hosts = @{$conf->{nodes} // []};
+my $db = $conf->{db};
+
+## Parse command line (overrides conf)
+my ($table);
+exit 1 unless GetOptions
+  (
+   'nodes=s' => sub { @seed_hosts = split /,/, $_[1]; },
+   'db=s' => \$db,
+   'table=s' => \$table,
+   'ttl=s' => \$ttl,
+  );
+
+my %mustset =
+  (
+   table => \$table,
+   db => \$db,
+  );
+
+my $ok = 1;
+for my $k (keys %mustset) {
+    unless (defined ${$mustset{$k}}) {
+        warn "Error: parameter \`$k' is unset.\n";
+        $ok = 0;
+    }
+}
+exit 1 unless $ok;
+
+## do_it
+my $cass = Cassandra::Client->new
+  (
+   contact_points => \@seed_hosts,
+   keyspace => $db,
+  );
+
+$cass->connect;
+
+my $query =
+  'INSERT INTO users (key, column1, column2, value) VALUES (?, ?, ?, ?)';
+my $ttl_query = 'USING TTL ?';
+
+my @queries = ();
+
+sub send_batch($) {
+    my $queries = shift;
+    $cass->batch($queries, { batch_type => 'unlogged' });
+    printf "Sent %d inserts.\n", scalar @$queries;
+}
+
+while (<STDIN>) {
+    my @values = split /\t/;
+    next unless @values == 4;
+    push @queries, [$query, \@values];
+
+    if (@queries >= 1000) {
+        send_batch \@queries;
+        @queries = ();
+    }
+}
+
+send_batch \@queries;
