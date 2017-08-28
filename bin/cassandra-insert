@@ -23,7 +23,8 @@ my @seed_hosts = @{$conf->{nodes} // []};
 my $db = $conf->{db};
 
 ## Parse command line (overrides conf)
-my ($table);
+my $table;
+my $ttl = 86400;
 exit 1 unless GetOptions
   (
    'nodes=s' => sub { @seed_hosts = split /,/, $_[1]; },
