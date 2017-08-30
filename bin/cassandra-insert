@@ -3,6 +3,7 @@ use strict;
 require 5.10.0;
 use Cassandra::Client;
 use Getopt::Long;
+use Time::HiRes qw(time sleep);
 use JSON;
 use FindBin qw($RealBin);
 #use lib $RealBin . '/../lib';
@@ -25,14 +26,16 @@ my $db = $conf->{db};
 ## Parse command line (overrides conf)
 my $table;
 my $ttl = 86400;
-my $maxwps = undef;
+
+my $throttle_interval = 100;    # Adjust for pacing after this many inserts
+my $throttle_wps = 1000;        # Set writes per second limit
 exit 1 unless GetOptions
   (
    'nodes=s' => sub { @seed_hosts = split /,/, $_[1]; },
    'db=s' => \$db,
    'table=s' => \$table,
    'ttl=s' => \$ttl,
-   'throttle-wps=s' => \$maxwps,
+   'throttle-wps=s' => \$throttle_wps,
   );
 
 my %mustset =
@@ -49,6 +52,23 @@ for my $k (keys %mustset) {
     }
 }
 exit 1 unless $ok;
+
+my $time_start = time;
+sub throttle_sleep($$) {
+    my ($wps, $writes_completed) = @_;
+    return unless defined $wps or $wps <= 0;
+
+    my $target_duration = $writes_completed / $wps;
+    my $target_time = $time_start + $target_duration;
+    my $now = time;
+
+    if ($now < $target_time) {
+        my $sleep_seconds = $target_time - $now;
+        printf STDERR "Sleep %.2f to respect throttling.\n", $sleep_seconds;
+        sleep $sleep_seconds;
+    }
+
+}
 
 ## do_it
 my $cass = Cassandra::Client->new
@@ -84,6 +104,10 @@ while (<STDIN>) {
     } else {
         ++$write_failures;
         printf STDERR "FAIL: %s\n", join ', ', $@;
+    }
+
+    if (($recs_out % $throttle_interval) == 0) {
+        throttle_sleep $throttle_wps, $recs_out;
     }
 }
 
