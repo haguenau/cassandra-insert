@@ -25,12 +25,14 @@ my $db = $conf->{db};
 ## Parse command line (overrides conf)
 my $table;
 my $ttl = 86400;
+my $maxwps = undef;
 exit 1 unless GetOptions
   (
    'nodes=s' => sub { @seed_hosts = split /,/, $_[1]; },
    'db=s' => \$db,
    'table=s' => \$table,
    'ttl=s' => \$ttl,
+   'throttle-wps=s' => \$maxwps,
   );
 
 my %mustset =
@@ -59,25 +61,30 @@ $cass->connect;
 
 my $query =
   'INSERT INTO users (key, column1, column2, value) VALUES (?, ?, ?, ?)';
-my $ttl_query = 'USING TTL ?';
+my $ttl_query = ' USING TTL ?';
 
-my @queries = ();
-
-sub send_batch($) {
-    my $queries = shift;
-    $cass->batch($queries, { batch_type => 'unlogged' });
-    printf "Sent %d inserts.\n", scalar @$queries;
+if (defined $ttl) {
+    $query .= sprintf $ttl_query, $ttl;
 }
 
+my ($recs_in, $recs_out, $bad_recs, $write_failures) = (0, 0, 0, 0);
 while (<STDIN>) {
+    ++$recs_in;
     my @values = split /\t/;
-    next unless @values == 4;
-    push @queries, [$query, \@values];
+    if (@values != 4) {
+        ++$bad_recs;
+        next;
+    }
+    push @values, $ttl if defined $ttl;
 
-    if (@queries >= 1000) {
-        send_batch \@queries;
-        @queries = ();
+    my $ok = eval { $cass->execute($query, \@values); };
+
+    if ($ok) {
+        ++$recs_out;
+    } else {
+        ++$write_failures;
+        printf STDERR "FAIL: %s\n", join ', ', $@;
     }
 }
 
-send_batch \@queries;
+printf "i:%d o:%d b:%d f:%d\n", $recs_in, $recs_out, $bad_recs, $write_failures;
