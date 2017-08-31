@@ -79,8 +79,9 @@ my $cass = Cassandra::Client->new
 
 $cass->connect;
 
-my $query =
-  'INSERT INTO users (key, column1, column2, value) VALUES (?, ?, ?, ?)';
+my $query = sprintf
+  'INSERT INTO "%s" (key, column1, column2, value) VALUES (?, ?, ?, ?)',
+  $table;
 my $ttl_query = ' USING TTL ?';
 
 if (defined $ttl) {
