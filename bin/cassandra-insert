@@ -29,6 +29,9 @@ my $ttl = 86400;
 
 my $throttle_interval = 100;    # Adjust for pacing after this many inserts
 my $throttle_wps = 1000;        # Set writes per second limit
+
+my $def_constants;
+my $def_types;
 exit 1 unless GetOptions
   (
    'nodes=s' => sub { @seed_hosts = split /,/, $_[1]; },
@@ -36,12 +39,16 @@ exit 1 unless GetOptions
    'table=s' => \$table,
    'ttl=s' => \$ttl,
    'throttle-wps=s' => \$throttle_wps,
+   'const=s' => \$def_constants,
+   'header=s' => \$def_types,
   );
 
 my %mustset =
   (
-   table => \$table,
+   const => \$def_constants,
    db => \$db,
+   header => \$def_types,
+   table => \$table,
   );
 
 my $ok = 1;
@@ -52,6 +59,64 @@ for my $k (keys %mustset) {
     }
 }
 exit 1 unless $ok;
+
+sub convert_identity($) {
+    return shift;
+}
+
+sub convert_delta_varint_list($) {
+    ## TODO: implement
+    return "!";
+}
+
+my %converters =
+  (
+   'auto' => \&convert_identity,
+   'delta-varint-list' => \&convert_delta_varint_list,
+  );
+my %keys = map { $_ => 1 } qw(key column1 column2 value);
+
+sub check_get_converter($) {
+    my $type = shift;
+    my $converter = $converters{$type};
+
+    die "No converter for type \`$type'" unless defined $converter;
+    return $converter;
+}
+
+sub check_key_definable($) {
+    my $key = shift;
+    die "Bad key \`$key'" unless defined $keys{$key};
+
+    ## TODO: also check for redefinition attempts.
+}
+
+
+## Parse constants
+# fmt: <id>:<type>=<value>{,<id>:<type>=<value>}
+my %consts = ();
+my @conststrs = split /,/, $def_constants;
+for my $constdef (@conststrs) {
+    my ($k, $t, $v) = $constdef =~ /^([a-z0-9-]+):([a-z0-9-]+)=(.*)$/;
+    die "Bad constant definition string \`$constdef'" unless defined $v;
+
+    my $converter = check_get_converter $t;
+    my $blob = $converter->($v);
+
+    use Data::Dumper; printf "`%s' => %s\n", $constdef, Dumper(\$blob);
+    $consts{$k} = $blob;
+}
+
+## Parse header
+# fmt: <type>{,type}
+my @headers = ();
+my @headstrs = split /,/, $def_types;
+for my $type (@headstrs) {
+    my $converter = check_get_converter $type;
+    push @headers, $converter;
+}
+
+## TODO: check that keys of @consts and @headers partition those of %keys
 
 my $time_start = time;
 sub throttle_sleep($$) {
@@ -92,7 +157,7 @@ my ($recs_in, $recs_out, $bad_recs, $write_failures) = (0, 0, 0, 0);
 while (<STDIN>) {
     ++$recs_in;
     my @values = split /\t/;
-    if (@values != 4) {
+    if (@values != @headers) {
         ++$bad_recs;
         next;
     }
