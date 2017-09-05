@@ -6,8 +6,8 @@ use Getopt::Long;
 use Time::HiRes qw(time sleep);
 use JSON;
 use FindBin qw($RealBin);
-#use lib $RealBin . '/../lib';
-#use BinaryEncode qw(:all);
+use lib $RealBin . '/../lib';
+use BinaryCodec qw(:all);
 
 ## Parse config file
 my $fconf = $RealBin . '/../conf/cassandra-insert.json';
@@ -60,19 +60,12 @@ for my $k (keys %mustset) {
 }
 exit 1 unless $ok;
 
-sub convert_identity($) {
-    return shift;
-}
-
-sub convert_delta_varint_list($) {
-    ## TODO: implement
-    return "!";
-}
+sub identity($) { return shift; }
 
 my %converters =
   (
-   'auto' => \&convert_identity,
-   'delta-varint-list' => \&convert_delta_varint_list,
+   'auto' => \&identity,
+   'delta-varint-list' => \&BinaryCodec::delta_varint_list_encode,
   );
 my %keys = map { $_ => 1 } qw(key column1 column2 value);
 
