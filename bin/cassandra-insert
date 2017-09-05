@@ -92,6 +92,8 @@ my @conststrs = split /,/, $def_constants;
 for my $constdef (@conststrs) {
     my ($k, $t, $v) = $constdef =~ /^([a-z0-9-]+):([a-z0-9-]+)=(.*)$/;
     die "Bad constant definition string \`$constdef'" unless defined $v;
+    die "Duplicate constant key \`$k'" if defined $consts{$k};
+    die "Invalid constant key \`$k'" unless defined $keys{$k};
 
     my $converter = check_get_converter $t;
     my $blob = $converter->($v);
@@ -107,12 +109,28 @@ my @headstrs = split /,/, $def_types;
 for my $typedef (@headstrs) {
     my ($k, $t) = $typedef =~ /^([a-z0-9-]+):([a-z0-9-]+)$/;
     die "Bad type declaration string \`$typedef'" unless defined $t;
+    die "Invalid data key \`$k'" unless defined $keys{$k};
 
     my $converter = check_get_converter $t;
     push @headers, { key => $k, conver => $converter };
 }
 
-## TODO: check that keys of @consts and @headers partition those of %keys
+## Check that keys of @consts and @headers partition those of %keys
+{
+    my %keys_seen;
+    for my $k ((keys %consts, map { $_->{key} } @headers)) {
+        die "Duplicate key \`$k'" if defined $keys_seen{$k};
+        $keys_seen{$k} = 1;
+    }
+
+    my @missing_keys = ();
+    for my $k (sort keys %keys) {
+        push @missing_keys, $k unless defined $keys_seen{$k};
+    }
+
+    die sprintf "Must set all keys; missing %s",
+      join ', ', map {  "\`$_'" } @missing_keys if @missing_keys;
+}
 
 my $time_start = time;
 sub throttle_sleep($$) {
