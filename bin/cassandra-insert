@@ -198,4 +198,25 @@ while (<STDIN>) {
     }
 }
 
-printf "i:%d o:%d b:%d f:%d\n", $recs_in, $recs_out, $bad_recs, $write_failures;
+my %metrics =
+  (
+   recs_in => $recs_in,
+   recs_out => $recs_out,
+   bad_recs => $bad_recs,
+   write_failures => $write_failures,
+  );
+
+sub print_as_json($) {
+    my $data = shift;
+    printf "%s\n", to_json $data;
+}
+
+sub print_as_kv($) {
+    my $data = shift;
+    for my $k (keys %$data) {
+        printf "%s %s\n", $k, $data->{$k};
+    }
+}
+
+# print_as_json \%metrics;
+print_as_kv \%metrics;
