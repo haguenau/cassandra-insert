@@ -96,9 +96,7 @@ for my $constdef (@conststrs) {
     die "Invalid constant key \`$k'" unless defined $keys{$k};
 
     my $converter = check_get_converter $t;
-    my $blob = $converter->($v);
-
-    $convert{$k} = $blob;
+    $convert{$k} = { value => $converter->($v) };
 }
 
 ## Parse header
@@ -106,14 +104,15 @@ for my $constdef (@conststrs) {
 my $column_count;
 {
     my @headstrs = split /,/, $def_types;
-    my $column_count = @headstrs;
+    $column_count = @headstrs;
+    my $i = 0;
     for my $typedef (@headstrs) {
         my ($k, $t) = $typedef =~ /^([a-z0-9-]+):([a-z0-9-]+)$/;
         die "Bad type declaration string \`$typedef'" unless defined $t;
         die "Duplicate data key \`$k'" if defined $convert{$k};
         die "Invalid data key \`$k'" unless defined $keys{$k};
 
-        $convert{$k} = check_get_converter $t;
+        $convert{$k} = { convert => check_get_converter $t, index => $i++ };
     }
 }
 
@@ -154,26 +153,39 @@ my $cass = Cassandra::Client->new
 $cass->connect;
 
 my $query = sprintf
-  'INSERT INTO "%s" (key, column1, column2, value) VALUES (?, ?, ?, ?)',
-  $table;
+  'INSERT INTO "%s" (%s) VALUES (?, ?, ?, ?)',
+  $table,
+  join ', ', @keys;
 my $ttl_query = ' USING TTL ?';
 
-if (defined $ttl) {
-    $query .= sprintf $ttl_query, $ttl;
-}
+$query .= $ttl_query if defined $ttl;
 
 my ($recs_in, $recs_out, $bad_recs, $write_failures) = (0, 0, 0, 0);
 while (<STDIN>) {
     ++$recs_in;
-    my @values = split /\t/;
-    if (@values != @headers) {
+    my @data = split /\t/;
+    if (@data != $column_count) {
         ++$bad_recs;
         next;
+    }
+
+    my @values = ();
+    for my $k (@keys) {
+        my $entry = $convert{$k};
+        my $value;
+
+        if (defined $entry->{value}) {
+            $value = $entry->{value};
+        } else {
+            my $converter = $entry->{convert};
+            my $str = $data[$entry->{index}];
+            $value = $converter->($str);
+        }
+        push @values, $value;
     }
     push @values, $ttl if defined $ttl;
 
     my $ok = eval { $cass->execute($query, \@values); };
-
     if ($ok) {
         ++$recs_out;
     } else {
