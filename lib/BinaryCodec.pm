@@ -18,6 +18,5 @@ sub delta_varint_list_encode($) {
     my @strings = split /,\s*/, shift;
     my @ints = map { die "Bad integer \`$_'" unless /^\d+$/; 0 + $_; } @strings;
 
-    use Data::Dumper; print STDERR Dumper(\@ints);
-    return '';
+    return 'TODO';
 }
