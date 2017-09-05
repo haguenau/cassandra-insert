@@ -67,7 +67,9 @@ my %converters =
    'auto' => \&identity,
    'delta-varint-list' => \&BinaryCodec::delta_varint_list_encode,
   );
-my %keys = map { $_ => 1 } qw(key column1 column2 value);
+
+my @keys = qw(key column1 column2 value);
+my %keys = map { $_ => 1 } @keys;
 
 sub check_get_converter($) {
     my $type = shift;
@@ -80,52 +82,46 @@ sub check_get_converter($) {
 sub check_key_definable($) {
     my $key = shift;
     die "Bad key \`$key'" unless defined $keys{$key};
-
-    ## TODO: also check for redefinition attempts.
 }
 
 
+my %convert = ();
 ## Parse constants
 # fmt: <id>:<type>=<value>{,<id>:<type>=<value>}
-my %consts = ();
 my @conststrs = split /,/, $def_constants;
 for my $constdef (@conststrs) {
     my ($k, $t, $v) = $constdef =~ /^([a-z0-9-]+):([a-z0-9-]+)=(.*)$/;
     die "Bad constant definition string \`$constdef'" unless defined $v;
-    die "Duplicate constant key \`$k'" if defined $consts{$k};
+    die "Duplicate constant key \`$k'" if defined $convert{$k};
     die "Invalid constant key \`$k'" unless defined $keys{$k};
 
     my $converter = check_get_converter $t;
     my $blob = $converter->($v);
 
-    use Data::Dumper; printf "`%s' => %s\n", $constdef, Dumper(\$blob);
-    $consts{$k} = $blob;
+    $convert{$k} = $blob;
 }
 
 ## Parse header
 # fmt: <id>:<type>{,<id>:<type>}
-my @headers = ();
-my @headstrs = split /,/, $def_types;
-for my $typedef (@headstrs) {
-    my ($k, $t) = $typedef =~ /^([a-z0-9-]+):([a-z0-9-]+)$/;
-    die "Bad type declaration string \`$typedef'" unless defined $t;
-    die "Invalid data key \`$k'" unless defined $keys{$k};
+my $column_count;
+{
+    my @headstrs = split /,/, $def_types;
+    my $column_count = @headstrs;
+    for my $typedef (@headstrs) {
+        my ($k, $t) = $typedef =~ /^([a-z0-9-]+):([a-z0-9-]+)$/;
+        die "Bad type declaration string \`$typedef'" unless defined $t;
+        die "Duplicate data key \`$k'" if defined $convert{$k};
+        die "Invalid data key \`$k'" unless defined $keys{$k};
 
-    my $converter = check_get_converter $t;
-    push @headers, { key => $k, conver => $converter };
+        $convert{$k} = check_get_converter $t;
+    }
 }
 
-## Check that keys of @consts and @headers partition those of %keys
+## Check that all keys were set
 {
-    my %keys_seen;
-    for my $k ((keys %consts, map { $_->{key} } @headers)) {
-        die "Duplicate key \`$k'" if defined $keys_seen{$k};
-        $keys_seen{$k} = 1;
-    }
-
     my @missing_keys = ();
     for my $k (sort keys %keys) {
-        push @missing_keys, $k unless defined $keys_seen{$k};
+        push @missing_keys, $k unless defined $convert{$k};
     }
 
     die sprintf "Must set all keys; missing %s",
@@ -146,10 +142,9 @@ sub throttle_sleep($$) {
         printf STDERR "Sleep %.2f to respect throttling.\n", $sleep_seconds;
         sleep $sleep_seconds;
     }
-
 }
 
-## do_it
+## Insert
 my $cass = Cassandra::Client->new
   (
    contact_points => \@seed_hosts,
