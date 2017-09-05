@@ -101,12 +101,15 @@ for my $constdef (@conststrs) {
 }
 
 ## Parse header
-# fmt: <type>{,type}
+# fmt: <id>:<type>{,<id>:<type>}
 my @headers = ();
 my @headstrs = split /,/, $def_types;
-for my $type (@headstrs) {
-    my $converter = check_get_converter $type;
-    push @headers, $converter;
+for my $typedef (@headstrs) {
+    my ($k, $t) = $typedef =~ /^([a-z0-9-]+):([a-z0-9-]+)$/;
+    die "Bad type declaration string \`$typedef'" unless defined $t;
+
+    my $converter = check_get_converter $t;
+    push @headers, { key => $k, conver => $converter };
 }
 
 ## TODO: check that keys of @consts and @headers partition those of %keys
