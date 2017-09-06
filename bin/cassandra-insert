@@ -128,6 +128,7 @@ my $column_count;
 }
 
 my $time_start = time;
+my $duration_slept = 0;
 sub throttle_sleep($$) {
     my ($wps, $writes_completed) = @_;
     return unless defined $wps or $wps <= 0;
@@ -140,6 +141,7 @@ sub throttle_sleep($$) {
         my $sleep_seconds = $target_time - $now;
         printf STDERR "Sleep %.2f to respect throttling.\n", $sleep_seconds;
         sleep $sleep_seconds;
+        $duration_slept += $sleep_seconds;
     }
 }
 
@@ -204,6 +206,9 @@ my %metrics =
    recs_out => $recs_out,
    bad_recs => $bad_recs,
    write_failures => $write_failures,
+   seconds_slept => $duration_slept,
+   seconds_total => time - $time_start,
+   unix_time => int $time_start,
   );
 
 sub print_as_json($) {
