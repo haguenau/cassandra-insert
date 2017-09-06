@@ -32,6 +32,7 @@ my $throttle_wps = 1000;        # Set writes per second limit
 
 my $def_constants;
 my $def_types;
+my $is_verbose = 0;
 exit 1 unless GetOptions
   (
    'nodes=s' => sub { @seed_hosts = split /,/, $_[1]; },
@@ -41,6 +42,7 @@ exit 1 unless GetOptions
    'throttle-wps=s' => \$throttle_wps,
    'const=s' => \$def_constants,
    'header=s' => \$def_types,
+   'v|verbose' => \$is_verbose,
   );
 
 my %mustset =
@@ -139,7 +141,8 @@ sub throttle_sleep($$) {
 
     if ($now < $target_time) {
         my $sleep_seconds = $target_time - $now;
-        printf STDERR "Sleep %.2f to respect throttling.\n", $sleep_seconds;
+        printf STDERR "Sleep %.2f to respect throttling.\n", $sleep_seconds
+          if $is_verbose;
         sleep $sleep_seconds;
         $duration_slept += $sleep_seconds;
     }
@@ -211,17 +214,17 @@ my %metrics =
    unix_time => int $time_start,
   );
 
-sub print_as_json($) {
+sub as_json($) {
     my $data = shift;
-    printf "%s\n", to_json $data;
+    return to_json($data, { canonical => 1}) . "\n";
 }
 
-sub print_as_kv($) {
+sub as_kv($) {
     my $data = shift;
     for my $k (keys %$data) {
         printf "%s %s\n", $k, $data->{$k};
     }
 }
 
-# print_as_json \%metrics;
-print_as_kv \%metrics;
+print as_json \%metrics;
+# print as_kv \%metrics;
