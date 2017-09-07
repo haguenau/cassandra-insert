@@ -35,13 +35,13 @@ my $def_types;
 my $is_verbose = 0;
 exit 1 unless GetOptions
   (
-   'nodes=s' => sub { @seed_hosts = split /,/, $_[1]; },
-   'db=s' => \$db,
-   'table=s' => \$table,
-   'ttl=s' => \$ttl,
-   'throttle-wps=s' => \$throttle_wps,
    'const=s' => \$def_constants,
+   'db=s' => \$db,
    'header=s' => \$def_types,
+   'nodes=s' => sub { @seed_hosts = split /,/, $_[1]; },
+   'table=s' => \$table,
+   'throttle-wps=s' => \$throttle_wps,
+   'ttl=s' => \$ttl,
    'v|verbose' => \$is_verbose,
   );
 
