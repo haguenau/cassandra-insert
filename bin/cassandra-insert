@@ -33,16 +33,22 @@ my $throttle_wps = 1000;        # Set writes per second limit
 my $def_constants;
 my $def_types;
 my $is_verbose = 0;
+my ($do_print_json, $do_print_kv) = (0, 0);
+my ($write_json, $write_kv);
 exit 1 unless GetOptions
   (
    'const=s' => \$def_constants,
    'db=s' => \$db,
    'header=s' => \$def_types,
    'nodes=s' => sub { @seed_hosts = split /,/, $_[1]; },
+   'print-json' => \$do_print_json,
+   'print-kv' => \$do_print_kv,
    'table=s' => \$table,
-   'throttle-wps=s' => \$throttle_wps,
+   't|throttle-wps=s' => \$throttle_wps,
    'ttl=s' => \$ttl,
    'v|verbose' => \$is_verbose,
+   'write-json=s' => \$write_json,
+   'write-kv=s' => \$write_kv,
   );
 
 my %mustset =
@@ -203,14 +209,15 @@ while (<STDIN>) {
     }
 }
 
+sub round($) { sprintf "%.2f", shift; }
 my %metrics =
   (
    recs_in => $recs_in,
    recs_out => $recs_out,
    bad_recs => $bad_recs,
    write_failures => $write_failures,
-   seconds_slept => $duration_slept,
-   seconds_total => time - $time_start,
+   seconds_slept => round $duration_slept,
+   seconds_total => round time - $time_start,
    unix_time => int $time_start,
   );
 
@@ -219,12 +226,38 @@ sub as_json($) {
     return to_json($data, { canonical => 1}) . "\n";
 }
 
+## Pretty-print in a Nagios-friendly <key> <space> <value> format
 sub as_kv($) {
     my $data = shift;
+    my $out = '';
     for my $k (keys %$data) {
-        printf "%s %s\n", $k, $data->{$k};
+        $out .= sprintf "%s %s\n", $k, $data->{$k};
+    }
+
+    return $out;
+}
+
+sub print_metrics() {
+    my $json = as_json \%metrics;
+    my $kv = as_kv \%metrics;
+
+    print $json if $do_print_json;
+    print $kv if $do_print_kv;
+
+    for my $conf ({ file => $write_json, data => $json },
+                  { file => $write_kv, data => $kv }) {
+        if (defined $conf->{file}) {
+            my $fout = $conf->{file};
+            my $ftmp = $fout . '.tmp';
+            open(FOUT, ">$ftmp")
+              or die "Couldn't open \`$ftmp' for writing: $!";
+            print FOUT $conf->{data};
+            close FOUT;
+
+            printf STDERR "Rename to \`$fout' failed: $!\n"
+              unless rename $ftmp, $fout;
+        }
     }
 }
 
-print as_json \%metrics;
-# print as_kv \%metrics;
+print_metrics;
