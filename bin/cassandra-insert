@@ -180,6 +180,7 @@ sub run_inserts($) {
     my ($recs_in, $recs_out, $bad_recs, $write_failures) = (0, 0, 0, 0);
     while (<STDIN>) {
         ++$recs_in;
+        chomp;
         my @data = split /\t/;
         if (@data != $column_count) {
             ++$bad_recs;
