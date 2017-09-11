@@ -23,6 +23,10 @@ close FCONF;
 my @seed_hosts = @{$conf->{nodes} // []};
 my $db = $conf->{db};
 
+my %metrics;
+my $time_start = time;
+my $duration_slept = 0;
+
 ## Parse command line (overrides conf)
 my $table;
 my $ttl = 86400;
@@ -51,25 +55,7 @@ exit 1 unless GetOptions
    'write-kv=s' => \$write_kv,
   );
 
-my %mustset =
-  (
-   const => \$def_constants,
-   db => \$db,
-   header => \$def_types,
-   table => \$table,
-  );
-
-my $ok = 1;
-for my $k (keys %mustset) {
-    unless (defined ${$mustset{$k}}) {
-        warn "Error: parameter \`$k' is unset.\n";
-        $ok = 0;
-    }
-}
-exit 1 unless $ok;
-
 sub identity($) { return shift; }
-
 my %converters =
   (
    'auto' => \&identity,
@@ -78,6 +64,26 @@ my %converters =
 
 my @keys = qw(key column1 column2 value);
 my %keys = map { $_ => 1 } @keys;
+my %convert = ();
+
+sub check_params() {
+    my %mustset =
+      (
+       const => \$def_constants,
+       db => \$db,
+       header => \$def_types,
+       table => \$table,
+      );
+
+    my $ok = 1;
+    for my $k (keys %mustset) {
+        unless (defined ${$mustset{$k}}) {
+            warn "Error: parameter \`$k' is unset.\n";
+            $ok = 0;
+        }
+    }
+    exit 1 unless $ok;
+}
 
 sub check_get_converter($) {
     my $type = shift;
@@ -92,40 +98,41 @@ sub check_key_definable($) {
     die "Bad key \`$key'" unless defined $keys{$key};
 }
 
+sub parse_constants() {
+    ## fmt: <id>:<type>=<value>{,<id>:<type>=<value>}
+    my @conststrs = split /,/, $def_constants;
+    for my $constdef (@conststrs) {
+        my ($k, $t, $v) = $constdef =~ /^([a-z0-9-]+):([a-z0-9-]+)=(.*)$/;
+        die "Bad constant definition string \`$constdef'" unless defined $v;
+        die "Duplicate constant key \`$k'" if defined $convert{$k};
+        die "Invalid constant key \`$k'" unless defined $keys{$k};
 
-my %convert = ();
-## Parse constants
-# fmt: <id>:<type>=<value>{,<id>:<type>=<value>}
-my @conststrs = split /,/, $def_constants;
-for my $constdef (@conststrs) {
-    my ($k, $t, $v) = $constdef =~ /^([a-z0-9-]+):([a-z0-9-]+)=(.*)$/;
-    die "Bad constant definition string \`$constdef'" unless defined $v;
-    die "Duplicate constant key \`$k'" if defined $convert{$k};
-    die "Invalid constant key \`$k'" unless defined $keys{$k};
-
-    my $converter = check_get_converter $t;
-    $convert{$k} = { value => $converter->($v) };
-}
-
-## Parse header
-# fmt: <id>:<type>{,<id>:<type>}
-my $column_count;
-{
-    my @headstrs = split /,/, $def_types;
-    $column_count = @headstrs;
-    my $i = 0;
-    for my $typedef (@headstrs) {
-        my ($k, $t) = $typedef =~ /^([a-z0-9-]+):([a-z0-9-]+)$/;
-        die "Bad type declaration string \`$typedef'" unless defined $t;
-        die "Duplicate data key \`$k'" if defined $convert{$k};
-        die "Invalid data key \`$k'" unless defined $keys{$k};
-
-        $convert{$k} = { convert => check_get_converter $t, index => $i++ };
+        my $converter = check_get_converter $t;
+        $convert{$k} = { value => $converter->($v) };
     }
 }
 
-## Check that all keys were set
-{
+sub parse_header() {
+    ## fmt: <id>:<type>{,<id>:<type>}
+    my $column_count;
+    {
+        my @headstrs = split /,/, $def_types;
+        $column_count = @headstrs;
+        my $i = 0;
+        for my $typedef (@headstrs) {
+            my ($k, $t) = $typedef =~ /^([a-z0-9-]+):([a-z0-9-]+)$/;
+            die "Bad type declaration string \`$typedef'" unless defined $t;
+            die "Duplicate data key \`$k'" if defined $convert{$k};
+            die "Invalid data key \`$k'" unless defined $keys{$k};
+
+            $convert{$k} = { convert => check_get_converter $t, index => $i++ };
+        }
+    }
+
+    return $column_count;
+}
+
+sub check_keys() {
     my @missing_keys = ();
     for my $k (sort keys %keys) {
         push @missing_keys, $k unless defined $convert{$k};
@@ -135,8 +142,6 @@ my $column_count;
       join ', ', map {  "\`$_'" } @missing_keys if @missing_keys;
 }
 
-my $time_start = time;
-my $duration_slept = 0;
 sub throttle_sleep($$) {
     my ($wps, $writes_completed) = @_;
     return unless defined $wps or $wps <= 0;
@@ -154,72 +159,74 @@ sub throttle_sleep($$) {
     }
 }
 
-## Insert
-my $cass = Cassandra::Client->new
-  (
-   contact_points => \@seed_hosts,
-   keyspace => $db,
-  );
+sub run_inserts($) {
+    my $column_count = shift;
+    my $cass = Cassandra::Client->new
+      (
+       contact_points => \@seed_hosts,
+       keyspace => $db,
+      );
 
-$cass->connect;
+    $cass->connect;
 
-my $query = sprintf
-  'INSERT INTO "%s" (%s) VALUES (?, ?, ?, ?)',
-  $table,
-  join ', ', @keys;
-my $ttl_query = ' USING TTL ?';
+    my $query = sprintf
+      'INSERT INTO "%s" (%s) VALUES (?, ?, ?, ?)',
+      $table,
+      join ', ', @keys;
+    my $ttl_query = ' USING TTL ?';
 
-$query .= $ttl_query if defined $ttl;
+    $query .= $ttl_query if defined $ttl;
 
-my ($recs_in, $recs_out, $bad_recs, $write_failures) = (0, 0, 0, 0);
-while (<STDIN>) {
-    ++$recs_in;
-    my @data = split /\t/;
-    if (@data != $column_count) {
-        ++$bad_recs;
-        next;
-    }
-
-    my @values = ();
-    for my $k (@keys) {
-        my $entry = $convert{$k};
-        my $value;
-
-        if (defined $entry->{value}) {
-            $value = $entry->{value};
-        } else {
-            my $converter = $entry->{convert};
-            my $str = $data[$entry->{index}];
-            $value = $converter->($str);
+    my ($recs_in, $recs_out, $bad_recs, $write_failures) = (0, 0, 0, 0);
+    while (<STDIN>) {
+        ++$recs_in;
+        my @data = split /\t/;
+        if (@data != $column_count) {
+            ++$bad_recs;
+            next;
         }
-        push @values, $value;
-    }
-    push @values, $ttl if defined $ttl;
 
-    my $ok = eval { $cass->execute($query, \@values); };
-    if ($ok) {
-        ++$recs_out;
-    } else {
-        ++$write_failures;
-        printf STDERR "FAIL: %s\n", join ', ', $@;
+        my @values = ();
+        for my $k (@keys) {
+            my $entry = $convert{$k};
+            my $value;
+
+            if (defined $entry->{value}) {
+                $value = $entry->{value};
+            } else {
+                my $converter = $entry->{convert};
+                my $str = $data[$entry->{index}];
+                $value = $converter->($str);
+            }
+            push @values, $value;
+        }
+        push @values, $ttl if defined $ttl;
+
+        my $ok = eval { $cass->execute($query, \@values); };
+        if ($ok) {
+            ++$recs_out;
+        } else {
+            ++$write_failures;
+            printf STDERR "FAIL: %s\n", join ', ', $@;
+        }
+
+        if (($recs_out % $throttle_interval) == 0) {
+            throttle_sleep $throttle_wps, $recs_out;
+        }
     }
 
-    if (($recs_out % $throttle_interval) == 0) {
-        throttle_sleep $throttle_wps, $recs_out;
-    }
+    sub round($) { sprintf "%.2f", shift; }
+    %metrics =
+      (
+       recs_in => $recs_in,
+       recs_out => $recs_out,
+       bad_recs => $bad_recs,
+       write_failures => $write_failures,
+       seconds_slept => round $duration_slept,
+       seconds_total => round time - $time_start,
+       unix_time => int $time_start,
+      );
 }
-
-sub round($) { sprintf "%.2f", shift; }
-my %metrics =
-  (
-   recs_in => $recs_in,
-   recs_out => $recs_out,
-   bad_recs => $bad_recs,
-   write_failures => $write_failures,
-   seconds_slept => round $duration_slept,
-   seconds_total => round time - $time_start,
-   unix_time => int $time_start,
-  );
 
 sub as_json($) {
     my $data = shift;
@@ -237,9 +244,10 @@ sub as_kv($) {
     return $out;
 }
 
-sub print_metrics() {
-    my $json = as_json \%metrics;
-    my $kv = as_kv \%metrics;
+sub print_metrics($) {
+    my $metrics = shift;
+    my $json = as_json $metrics;
+    my $kv = as_kv $metrics;
 
     print $json if $do_print_json;
     print $kv if $do_print_kv;
@@ -260,4 +268,14 @@ sub print_metrics() {
     }
 }
 
-print_metrics;
+sub main() {
+    check_params;
+    parse_constants;
+    my $column_count = parse_header;
+    check_keys;
+
+    run_inserts $column_count;
+    print_metrics \%metrics;
+}
+
+main;
