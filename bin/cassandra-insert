@@ -150,12 +150,16 @@ sub throttle_sleep($$) {
     my $target_time = $time_start + $target_duration;
     my $now = time;
 
+    my $actual_wps = $writes_completed / ($now - $time_start);
     if ($now < $target_time) {
         my $sleep_seconds = $target_time - $now;
-        printf STDERR "Sleep %.2f to respect throttling.\n", $sleep_seconds
+        printf STDERR "Throttle: sleep %.2f (writes: %.1f/s avg).\n",
+          $sleep_seconds, $actual_wps
           if $is_verbose;
         sleep $sleep_seconds;
         $duration_slept += $sleep_seconds;
+    } elsif ($is_verbose) {
+        printf STDERR "Writes: %.1f/s avg.\n", $actual_wps;
     }
 }
 
