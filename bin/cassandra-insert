@@ -31,7 +31,7 @@ my $duration_slept = 0;
 my $table;
 my $ttl = 86400;
 
-my $throttle_interval = 100;    # Adjust for pacing after this many inserts
+my $throttle_interval = 1000;   # Adjust for pacing after this many inserts
 my $throttle_wps = 10000;       # Set writes per second limit
 
 my $def_constants;
