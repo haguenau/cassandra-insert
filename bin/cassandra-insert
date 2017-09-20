@@ -294,9 +294,37 @@ sub main() {
     print_metrics \%metrics;
 }
 
+sub dispatch() {
+    ## Build command line to be passed down to workers
+    my @args =
+      (
+       '--const', $def_constants,
+       '--db', $db,
+       '--nodes', join (',', @seed_hosts),
+       '--print-json',
+       '--table', $table,
+       '--throttle-wps', $throttle_wps / $jobs,
+       '--ttl', $ttl,
+      );
+    push @args, '--verbose' if $is_verbose;
+
+    my @fhs = ();
+    for (1 .. $jobs) {
+        my $fh;
+        open ($fh, '|-', 'echo', $self, @args)
+          or die $!;
+        push @fhs, $fh;
+    }
+
+    for my $fh (@fhs) {
+        print <$fh>;
+        close $fh;
+    }
+}
+
 if ($jobs > 0) {
     ## Master: start children and give them work
-    die "Not implemented.";
+    dispatch;
 } else {
     main;
 }
