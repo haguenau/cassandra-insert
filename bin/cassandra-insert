@@ -48,7 +48,7 @@ exit 1 unless GetOptions
    'const=s' => \$def_constants,
    'db=s' => \$db,
    'header=s' => \$def_types,
-   'j|jobs' => \$jobs,
+   'j|jobs=i' => \$jobs,
    'nodes=s' => sub { @seed_hosts = split /,/, $_[1]; },
    'print-json' => \$do_print_json,
    'print-kv' => \$do_print_kv,
