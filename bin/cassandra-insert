@@ -9,6 +9,8 @@ use FindBin qw($RealBin);
 use lib $RealBin . '/../lib';
 use BinaryCodec qw(:all);
 
+my $self = $RealBin . '/cassandra-insert';
+
 ## Parse config file
 my $fconf = $RealBin . '/../conf/cassandra-insert.json';
 open(FCONF, $fconf)
@@ -38,6 +40,7 @@ my $throttle_wps = 10000;       # Set writes per second limit
 my $def_constants;
 my $def_types;
 my $is_verbose = 0;
+my $jobs = 0;
 my ($do_print_json, $do_print_kv) = (0, 0);
 my ($write_json, $write_kv);
 exit 1 unless GetOptions
@@ -45,6 +48,7 @@ exit 1 unless GetOptions
    'const=s' => \$def_constants,
    'db=s' => \$db,
    'header=s' => \$def_types,
+   'j|jobs' => \$jobs,
    'nodes=s' => sub { @seed_hosts = split /,/, $_[1]; },
    'print-json' => \$do_print_json,
    'print-kv' => \$do_print_kv,
@@ -290,4 +294,9 @@ sub main() {
     print_metrics \%metrics;
 }
 
-main;
+if ($jobs > 0) {
+    ## Master: start children and give them work
+    die "Not implemented.";
+} else {
+    main;
+}
