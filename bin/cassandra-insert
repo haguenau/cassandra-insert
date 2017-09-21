@@ -243,7 +243,7 @@ sub run_inserts($) {
         &$update_counts($ok);
     }
 
-    sub round($) { sprintf "%.2f", shift; }
+    sub round($) { 0 + sprintf "%.2f", shift; }
     %metrics =
       (
        recs_in => $recs_in,
