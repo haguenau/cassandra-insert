@@ -5,11 +5,12 @@ use Cassandra::Client;
 use Getopt::Long;
 use Time::HiRes qw(time sleep);
 use JSON;
-use FindBin qw($RealBin);
+use FindBin qw($RealBin $Script);
 use lib $RealBin . '/../lib';
 use BinaryCodec qw(:all);
+use File::Temp qw(tempdir);
 
-my $self = $RealBin . '/cassandra-insert';
+my $self = $RealBin . '/' . $Script;
 
 ## Parse config file
 my $fconf = $RealBin . '/../conf/cassandra-insert.json';
@@ -315,18 +316,20 @@ sub dispatch() {
        '--header', $def_types,
        '--jobs', 0,
        '--nodes', join (',', @seed_hosts),
-       '--print-json',
        '--table', $table,
        '--throttle-wps', int $throttle_wps / $jobs,
        '--ttl', $ttl,
       );
     push @args, '--verbose' if $is_verbose;
 
+    my $tmpdir = tempdir("$Script.XXXXXXXX", TMPDIR => 1, CLEANUP => 1);
     my @fhs = ();
-    for (1 .. $jobs) {
+    my @tmps = ();
+    for my $i (1 .. $jobs) {
         my $fh;
-        ## Todo: create directory for and inject JSON-writing arg
-        open ($fh, '|-', $self, @args)
+        my $jsonout = sprintf '%s/worker-%04d.json', $tmpdir, $i;
+        push @tmps, $jsonout;
+        open ($fh, '|-', $self, @args, '--write-json', $jsonout)
           or die $!;
         push @fhs, $fh;
     }
@@ -342,6 +345,27 @@ sub dispatch() {
     for my $fh (@fhs) {
         close $fh;
     }
+
+    ## Aggregate metrics from each worker
+    my %metrics = ();
+    my @keys_sum = qw(bad_recs recs_in recs_out seconds_slept
+                      seconds_total write_failures);
+    my @keys_max = qw(unix_time);
+    for my $f (@tmps) {
+        open (FIN, $f) or next;
+        local $/ = undef;
+        my $json = <FIN>;
+        close FIN;
+
+        my $this = from_json $json;
+        for my $k (@keys_sum) { $metrics{$k} += $this->{$k} }
+        for my $k (@keys_max) {
+            $metrics{$k} //= $this->{$k};
+            $metrics{$k} = $this->{$k} if $metrics{$k} < $this->{$k};
+        }
+    }
+
+    print_metrics \%metrics;
 }
 
 if ($jobs > 1) {
