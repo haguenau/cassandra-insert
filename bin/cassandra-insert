@@ -41,10 +41,12 @@ my $def_constants;
 my $def_types;
 my $is_verbose = 0;
 my $jobs = 0;
+my $connections = 64;
 my ($do_print_json, $do_print_kv) = (0, 0);
 my ($write_json, $write_kv);
 exit 1 unless GetOptions
   (
+   'connections' => \$connections, # max_connections, per worker
    'const=s' => \$def_constants,
    'db=s' => \$db,
    'header=s' => \$def_types,
@@ -176,6 +178,7 @@ sub run_inserts($) {
       (
        contact_points => \@seed_hosts,
        keyspace => $db,
+       max_connections => $connections,
       );
 
     $cass->connect;
