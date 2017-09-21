@@ -309,10 +309,11 @@ sub dispatch() {
       (
        '--const', $def_constants,
        '--db', $db,
+       '--header', $def_types,
        '--nodes', join (',', @seed_hosts),
        '--print-json',
        '--table', $table,
-       '--throttle-wps', $throttle_wps / $jobs,
+       '--throttle-wps', int $throttle_wps / $jobs,
        '--ttl', $ttl,
       );
     push @args, '--verbose' if $is_verbose;
@@ -320,18 +321,26 @@ sub dispatch() {
     my @fhs = ();
     for (1 .. $jobs) {
         my $fh;
-        open ($fh, '|-', 'echo', $self, @args)
+        ## Todo: create directory for and inject JSON-writing arg
+        open ($fh, '|-', $self, @args)
           or die $!;
         push @fhs, $fh;
     }
 
+    ## Copy STDIN lines to children, in sequence
+    my $i = 0;
+    while (my $l = <STDIN>) {
+        my $fh = $fhs[$i++ % @fhs];
+        print $fh $l;
+    }
+
+    ## Close & collect
     for my $fh (@fhs) {
-        print <$fh>;
         close $fh;
     }
 }
 
-if ($jobs > 0) {
+if ($jobs > 1) {
     ## Master: start children and give them work
     dispatch;
 } else {
