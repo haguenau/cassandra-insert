@@ -192,14 +192,14 @@ sub run_inserts($) {
     $query .= $ttl_query if defined $ttl;
 
     my ($recs_in, $recs_out, $bad_recs, $write_failures) = (0, 0, 0, 0);
-    sub update_counts {
+    my $update_counts = sub {
         if (shift) {
             ++$recs_out;
         } else {
             ++$write_failures;
             printf STDERR "FAIL: %s\n", join ', ', $@;
         }
-    }
+    };
 
     while (<STDIN>) {
         ++$recs_in;
@@ -230,7 +230,7 @@ sub run_inserts($) {
 
         if (@callbacks >= $concurrent_async_inserts) {
             my $ok = eval { (shift @callbacks)->() };
-            update_counts $ok;
+            &$update_counts($ok);
             if (($recs_out % $throttle_interval) == 0) {
                 throttle_sleep $throttle_wps, $recs_out;
             }
@@ -239,8 +239,8 @@ sub run_inserts($) {
 
     ## Flush any remaining queries at end of input
     for my $cb (@callbacks) {
-            my $ok = eval { $cb->() };
-            update_counts $ok;
+        my $ok = eval { $cb->() };
+        &$update_counts($ok);
     }
 
     sub round($) { sprintf "%.2f", shift; }
