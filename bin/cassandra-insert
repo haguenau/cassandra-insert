@@ -40,7 +40,7 @@ my $throttle_wps = 10000;       # Set writes per second limit
 my $def_constants;
 my $def_types;
 my $is_verbose = 0;
-my $jobs = 0;
+my $jobs = 16;
 my $connections = 64;
 my ($do_print_json, $do_print_kv) = (0, 0);
 my ($write_json, $write_kv);
@@ -313,6 +313,7 @@ sub dispatch() {
        '--const', $def_constants,
        '--db', $db,
        '--header', $def_types,
+       '--jobs', 0,
        '--nodes', join (',', @seed_hosts),
        '--print-json',
        '--table', $table,
