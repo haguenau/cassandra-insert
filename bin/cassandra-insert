@@ -36,7 +36,7 @@ my $ttl = 86400;
 
 my $concurrent_async_inserts = 32;
 my $throttle_interval = 1000;   # Adjust for pacing after this many inserts
-my $throttle_wps = 10000;       # Set writes per second limit
+my $throttle_wps = 20000;       # Set writes per second limit
 
 my $def_constants;
 my $def_types;
