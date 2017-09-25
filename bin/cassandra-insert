@@ -350,7 +350,6 @@ sub dispatch() {
     my %metrics = ();
     my @keys_sum = qw(bad_recs recs_in recs_out seconds_slept
                       seconds_total write_failures);
-    my @keys_max = qw(unix_time);
     for my $f (@tmps) {
         open (FIN, $f) or next;
         local $/ = undef;
@@ -359,10 +358,6 @@ sub dispatch() {
 
         my $this = from_json $json;
         for my $k (@keys_sum) { $metrics{$k} += $this->{$k} }
-        for my $k (@keys_max) {
-            $metrics{$k} //= $this->{$k};
-            $metrics{$k} = $this->{$k} if $metrics{$k} < $this->{$k};
-        }
     }
 
     print_metrics \%metrics;
