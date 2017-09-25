@@ -281,6 +281,7 @@ sub augment_metrics($) {
     my $metrics = shift;
     $metrics->{effective_wps} =
       int $metrics->{recs_out} / $metrics->{seconds_total};
+    $metrics->{jobs} = $jobs;
 }
 
 sub print_metrics($) {
@@ -384,5 +385,6 @@ if ($jobs > 1) {
     ## Master: start children and give them work
     dispatch;
 } else {
+    $jobs = 1;
     main;
 }
