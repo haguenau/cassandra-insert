@@ -10,6 +10,8 @@ use lib $RealBin . '/../lib';
 use BinaryCodec qw(:all);
 use File::Temp qw(tempdir);
 
+sub augment_metrics($);
+
 my $self = $RealBin . '/' . $Script;
 
 ## Parse config file
@@ -255,6 +257,8 @@ sub run_inserts($) {
        seconds_total => round time - $time_start,
        unix_time => int $time_start,
       );
+
+    augment_metrics \%metrics;
 }
 
 sub as_json($) {
@@ -271,6 +275,12 @@ sub as_kv($) {
     }
 
     return $out;
+}
+
+sub augment_metrics($) {
+    my $metrics = shift;
+    $metrics->{effective_wps} =
+      int $metrics->{recs_out} / $metrics->{seconds_total};
 }
 
 sub print_metrics($) {
@@ -360,6 +370,13 @@ sub dispatch() {
         for my $k (@keys_sum) { $metrics{$k} += $this->{$k} }
     }
 
+    $metrics{seconds_total_children} = $metrics{seconds_total};
+    $metrics{seconds_total} = round time - $time_start;
+    $metrics{seconds_slept_children} = $metrics{seconds_slept};
+    $metrics{seconds_slept} = 0;
+    $metrics{unix_time} = int $time_start;
+
+    augment_metrics \%metrics;
     print_metrics \%metrics;
 }
 
