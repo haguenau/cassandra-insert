@@ -49,6 +49,7 @@ my ($do_print_json, $do_print_kv) = (0, 0);
 my ($write_json, $write_kv);
 exit 1 unless GetOptions
   (
+   'async=i' => \$concurrent_async_inserts,
    'connections=i' => \$connections, # max_connections, per worker
    'const=s' => \$def_constants,
    'db=s' => \$db,
