@@ -49,7 +49,7 @@ my ($do_print_json, $do_print_kv) = (0, 0);
 my ($write_json, $write_kv);
 exit 1 unless GetOptions
   (
-   'connections' => \$connections, # max_connections, per worker
+   'connections=i' => \$connections, # max_connections, per worker
    'const=s' => \$def_constants,
    'db=s' => \$db,
    'header=s' => \$def_types,
