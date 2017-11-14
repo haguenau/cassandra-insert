@@ -182,6 +182,7 @@ sub run_inserts($) {
        contact_points => \@seed_hosts,
        keyspace => $db,
        max_connections => $connections,
+       default_consistency => 'local_quorum',
       );
 
     $cass->connect;
