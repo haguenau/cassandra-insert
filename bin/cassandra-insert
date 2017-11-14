@@ -378,6 +378,10 @@ sub dispatch() {
     $metrics{seconds_slept} = 0;
     $metrics{unix_time} = int $time_start;
 
+    $metrics{async} = $concurrent_async_inserts;
+    $metrics{max_connections} = $connections;
+    $metrics{wps_throttle} = $throttle_wps;
+
     augment_metrics \%metrics;
     print_metrics \%metrics;
 }
