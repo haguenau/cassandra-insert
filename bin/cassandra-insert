@@ -43,7 +43,7 @@ my $throttle_wps = 20000;       # Set writes per second limit
 my $def_constants;
 my $def_types;
 my $is_verbose = 0;
-my $jobs = 16;
+my $jobs = 32;
 my $connections = 64;
 my ($do_print_json, $do_print_kv) = (0, 0);
 my ($write_json, $write_kv);
