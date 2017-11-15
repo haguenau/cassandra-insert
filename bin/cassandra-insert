@@ -36,15 +36,15 @@ my $duration_slept = 0;
 my $table;
 my $ttl = 86400;
 
-my $concurrent_async_inserts = 32;
+my $concurrent_async_inserts = 128;
 my $throttle_interval = 1000;   # Adjust for pacing after this many inserts
-my $throttle_wps = 20000;       # Set writes per second limit
+my $throttle_wps = 32000;       # Set writes per second limit
 
 my $def_constants;
 my $def_types;
 my $is_verbose = 0;
 my $jobs = 32;
-my $connections = 64;
+my $connections = 32;
 my ($do_print_json, $do_print_kv) = (0, 0);
 my ($write_json, $write_kv);
 exit 1 unless GetOptions
