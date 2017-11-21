@@ -383,6 +383,10 @@ sub dispatch() {
     $metrics{max_connections} = $connections;
     $metrics{wps_throttle} = $throttle_wps;
 
+    $metrics{db} = $db;
+    $metrics{table} = $table;
+    $metrics{ttl} = $ttl;
+
     augment_metrics \%metrics;
     print_metrics \%metrics;
 }
