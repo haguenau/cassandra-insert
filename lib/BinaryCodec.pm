@@ -39,7 +39,8 @@ sub delta_varint_list_encode($) {
 
     my $prev = 0;
     for my $n (@ints) {
-        $out .= varint_encode_single $n - $prev;
+        my $delta = $n - $prev;
+        $out .= varint_encode_single $delta if $delta > 0 || length $out == 1;
         $prev = $n;
     }
 
