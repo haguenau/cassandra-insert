@@ -9,7 +9,7 @@ $VERSION     = 1.00;
 @ISA         = qw(Exporter);
 @EXPORT      = ();
 @EXPORT_OK   =
-  qw(delta_varint_list_encode delta_varint_list_decode);
+  qw(delta_varint_list_encode_csv_magic delta_varint_list_decode);
 
 %EXPORT_TAGS = (all => \@EXPORT_OK,);
 
@@ -28,7 +28,7 @@ sub varint_encode_single($) {
 }
 
 ## CSV list of non-negative integers => blob
-sub delta_varint_list_encode($) {
+sub delta_varint_list_encode_csv_magic($) {
     my @strings = split /,\s*/, shift;
     my @ints = sort { $a <=> $b }
       map { die "Bad integer \`$_'" unless /^\d+$/; 0 + $_; } @strings;

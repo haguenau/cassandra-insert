@@ -70,7 +70,7 @@ sub identity($) { return shift; }
 my %converters =
   (
    'auto' => \&identity,
-   'delta-varint-list' => \&BinaryCodec::delta_varint_list_encode,
+   'delta-varint-list' => \&BinaryCodec::delta_varint_list_encode_csv_magic,
   );
 
 my @keys = qw(key column1 column2 value);
