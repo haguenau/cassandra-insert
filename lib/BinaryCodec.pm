@@ -9,7 +9,10 @@ $VERSION     = 1.00;
 @ISA         = qw(Exporter);
 @EXPORT      = ();
 @EXPORT_OK   =
-  qw(delta_varint_list_encode_csv_magic delta_varint_list_decode);
+  qw(delta_varint_list_encode
+     delta_varint_list_encode_csv_magic
+     delta_varint_list_encode_length
+     delta_varint_list_decode);
 
 %EXPORT_TAGS = (all => \@EXPORT_OK,);
 
@@ -27,24 +30,43 @@ sub varint_encode_single($) {
     return pack 'C*', @out;
 }
 
-## CSV list of non-negative integers => blob
-sub delta_varint_list_encode_csv_magic($) {
-    my @strings = split /,\s*/, shift;
-    my @ints = sort { $a <=> $b }
-      map { die "Bad integer \`$_'" unless /^\d+$/; 0 + $_; } @strings;
-    my $magic_byte = 0x4;
+## Integer list => delta-encoded varint blob (no length, no header).
+sub delta_varint_list_encode($) {
+    my $segments = shift;
+    my @sorted = sort { $a <=> $b }
+      map { die "Bad integer \`$_'" unless /^\d+$/; 0 + $_; } @$segments;
 
     my $out = '';
-    $out .= pack 'C', $magic_byte;
-
     my $prev = 0;
-    for my $n (@ints) {
+    for my $n (@sorted) {
         my $delta = $n - $prev;
         $out .= varint_encode_single $delta if $delta > 0 || length $out == 1;
         $prev = $n;
     }
 
     return $out;
+}
+
+## CSV list of non-negative integers => blob
+## Format is the one shared through ScyllaDB by data and backend:
+## just integers, preceded by an encoding type byte with value 4.
+sub delta_varint_list_encode_csv_magic($) {
+    my @segments = split /,\s*/, shift;
+    my $magic_byte_blob = pack 'C', 0x4;
+    my $segments_blob = delta_varint_list_encode \@segments;
+
+    return $magic_byte_blob . $segments_blob;
+}
+
+## Integer list => blob
+## Format is all varints, the first one indicating the length of the list.
+## This is the format shared through Segvault between data and backend.
+sub delta_varint_list_encode_length($) {
+    my $ints = shift;
+    my $length_blob = varint_encode_single(scalar @$ints);
+    my $segments_blob = delta_varint_list_encode $ints;
+
+    return $length_blob . $segments_blob;
 }
 
 sub varint_decode($) {
