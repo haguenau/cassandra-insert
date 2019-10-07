@@ -9,6 +9,50 @@ use FindBin qw($RealBin $Script);
 use lib $RealBin . '/../lib';
 use BinaryCodec qw(:all);
 use File::Temp qw(tempdir);
+use Pod::Usage;
+
+=head1 NAME
+
+cassandra-insert
+
+=head1 SYNOPSIS
+
+cassandra-insert [options]
+
+ Options:
+   --async=N              Queue up to this many async writes
+   --connections=N        Open this many connections to the cluster
+   --db=ID                Cassandra database name
+   --header=ID:TYPE,...   Set TSV column fields and types
+   -h, --help             Print this help message
+   --jobs=N               Start this many workers
+   --nodes=LIST           Use this initial list of server nodes
+   --print-json           Print diagnostics as JSON
+   --print-kv             Print diagnostics as key-value lines
+   --table=ID             Write to this table
+   --throttle-wps=N       Limit writes to this many per seconds on average
+   --ttl=SECONDS          Set Cassandra time-to-live to this many seconds
+   --write-json=FILE      Write diagnostics to file as JSON
+   --write-kv=FILE        Write diagnostics to file as key-value lines
+
+=head1 DESCRIPTION
+
+B<cassandra-insert> reads TSV from its standard input, and writes to a
+Cassandra (or ScyllaDB) table. Some columns can be set as constants,
+using C<--const=ID:TYPE=VALUE,...>, others should have their type
+specified with C<--header=ID:TYPE,...>, where C<auto> is often an
+acceptable type.
+
+Inserts are made in parallel using several connections per worker
+(B<--connections>, several queued async writes (B<--async>), and
+multiple workers (B<--jobs>). Overall throughput can be limited using
+B<--throttle-wps>.
+
+Post-insert diagnostics can be written in JSON (B<--print-json>,
+B<--write-json>) or text key-value (B<--print-kv>, B<--write-kv>)
+format.
+
+=cut
 
 sub augment_metrics($);
 
@@ -47,13 +91,15 @@ my $jobs = 32;
 my $connections = 64;
 my ($do_print_json, $do_print_kv) = (0, 0);
 my ($write_json, $write_kv);
-exit 1 unless GetOptions
+my $help = 0;
+GetOptions
   (
    'async=i' => \$concurrent_async_inserts,
    'connections=i' => \$connections, # max_connections, per worker
    'const=s' => \$def_constants,
    'db=s' => \$db,
    'header=s' => \$def_types,
+   'h|help' => \$help,
    'j|jobs=i' => \$jobs,
    'nodes=s' => sub { @seed_hosts = split /,/, $_[1]; },
    'print-json' => \$do_print_json,
@@ -64,7 +110,15 @@ exit 1 unless GetOptions
    'v|verbose' => \$is_verbose,
    'write-json=s' => \$write_json,
    'write-kv=s' => \$write_kv,
-  );
+  )
+  or pod2usage(1);
+
+pod2usage(0) if $help;
+unless (defined $def_constants && defined $def_types
+        && defined $table && @seed_hosts > 0) {
+    print STDERR "Must set --const, --types, --table, --nodes.\n\n";
+    pod2usage(1);
+}
 
 sub identity($) { return shift; }
 my %converters =
