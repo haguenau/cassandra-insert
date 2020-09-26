@@ -22,10 +22,14 @@ cassandra-insert [options]
  Options:
    --async=N              Queue up to this many async writes
    --connections=N        Open this many connections to the cluster
+   --const=CONSTSPEC,...  List of constants in format ID:TYPE=VALUE
    --db=ID                Cassandra database name
    --header=ID:TYPE,...   Set TSV column fields and types
    -h, --help             Print this help message
-   --jobs=N               Start this many workers
+   -j, --jobs=N           Start this many worker processes
+   --keys=ID,...          Optional list of column names, for validation
+                          against --const and --header (columns mentioned in
+                          those two must form a partition of --keys)
    --nodes=LIST           Use this initial list of server nodes
    --print-json           Print diagnostics as JSON
    --print-kv             Print diagnostics as key-value lines
@@ -102,10 +106,10 @@ GetOptions
    'header=s' => \$def_types,
    'h|help' => \$help,
    'j|jobs=i' => \$jobs,
+   'keys=s' => \$keys,
    'nodes=s' => sub { @seed_hosts = split /,/, $_[1]; },
    'print-json' => \$do_print_json,
    'print-kv' => \$do_print_kv,
-   'keys=s' => \$keys,
    'table=s' => \$table,
    't|throttle-wps=i' => \$throttle_wps,
    'ttl=i' => \$ttl,
@@ -118,9 +122,8 @@ GetOptions
 pod2usage(0) if $help;
 unless (defined $db && defined $table
         && defined $def_constants && defined $def_types
-        && length $keys > 0 && @seed_hosts > 0) {
-    print STDERR
-        "Must set --db, --table, --const, --header, --keys, --nodes.\n\n";
+        && @seed_hosts > 0) {
+    print STDERR "Must set --db, --table, --const, --header, --nodes.\n\n";
     pod2usage(1);
 }
 
@@ -166,6 +169,8 @@ sub check_get_converter($) {
 
 sub check_key_definable($) {
     my $key = shift;
+
+    return unless scalar keys @keys;
     die "Bad key \`$key'" unless defined $keys{$key};
 }
 
@@ -176,7 +181,7 @@ sub parse_constants() {
         my ($k, $t, $v) = $constdef =~ /^([a-z0-9-]+):([a-z0-9-]+)=(.*)$/;
         die "Bad constant definition string \`$constdef'" unless defined $v;
         die "Duplicate constant key \`$k'" if defined $convert{$k};
-        die "Invalid constant key \`$k'" unless defined $keys{$k};
+        check_key_definable $k;
 
         my $converter = check_get_converter $t;
         $convert{$k} = { value => $converter->($v) };
@@ -194,7 +199,7 @@ sub parse_header() {
             my ($k, $t) = $typedef =~ /^([a-z0-9-]+):([a-z0-9-]+)$/;
             die "Bad type declaration string \`$typedef'" unless defined $t;
             die "Duplicate data key \`$k'" if defined $convert{$k};
-            die "Invalid data key \`$k'" unless defined $keys{$k};
+            check_key_definable $k;
 
             $convert{$k} = { convert => check_get_converter $t, index => $i++ };
         }
@@ -210,7 +215,9 @@ sub check_keys() {
     }
 
     die sprintf "Must set all keys; missing %s",
-      join ', ', map {  "\`$_'" } @missing_keys if @missing_keys;
+    join ', ', map {  "\`$_'" } @missing_keys if @missing_keys;
+
+    @keys = keys %convert;      # Compute @keys in the absence of --keys
 }
 
 sub throttle_sleep($$) {
